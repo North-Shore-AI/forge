@@ -74,7 +74,7 @@ defmodule Forge.MixProject do
       main: "Forge",
       assets: %{"assets" => "assets"},
       logo: "assets/forge.svg",
-      extras: ["README.md", "CHANGELOG.md"],
+      extras: ["README.md", "CHANGELOG.md", "LICENSE"],
       source_ref: "v#{@version}",
       source_url: @source_url,
       groups_for_modules: [
