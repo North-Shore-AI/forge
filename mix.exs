@@ -57,7 +57,7 @@ defmodule Forge.MixProject do
         "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md"
       },
       maintainers: ["North-Shore-AI"],
-      files: ~w(lib .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
+      files: ~w(lib assets assets/forge.svg .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
     ]
   end
 
