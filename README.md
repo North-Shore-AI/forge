@@ -4,252 +4,121 @@
 
 <img src="assets/forge.svg" alt="Forge Logo" width="392"/>
 
-</div>
-
-<div align="center">
-
-**A domain-agnostic sample factory library for generating, transforming, and computing measurements on arbitrary samples in Elixir.**
+**Domain-agnostic sample factory for building repeatable data pipelines in Elixir.**
 
 </div>
 
-## Purpose
+Forge helps you generate samples, apply staged transformations, compute measurements, and persist results for dataset creation, evaluation harnesses, enrichment jobs, and analytics workflows.
 
-Forge provides a flexible, composable framework for working with sample data across any domain. Whether you're processing scientific measurements, user analytics, sensor data, or synthetic datasets, Forge offers:
+## Highlights
+- Pipeline DSL that wires together sources, stages, measurements, and storage backends
+- Two execution modes: a GenServer runner for simple batch runs and a streaming runner with backpressure and async stages
+- Resilient stage execution with retry policies, error classification, and DLQ marking
+- Measurement orchestration with caching, versioning, dependency resolution, and batch/async compute
+- Pluggable storage (ETS, Postgres) plus content-addressed artifact storage (local filesystem, S3 stub)
+- Built-in telemetry events, metric helpers, and optional OpenTelemetry tracing
+- Human-in-the-loop bridge for publishing samples to Anvil with mock/direct/http adapters
+- Deterministic manifests for reproducibility and drift detection
 
-- **Sample Generation**: Create samples from static lists or dynamic generators
-- **Pipeline Transformation**: Chain together stages to transform and enrich samples
-- **Measurement Computation**: Calculate metrics and measurements on samples (sync/async)
-- **Storage Backends**: Persist samples with pluggable storage implementations
-- **Lifecycle Management**: Track samples through their lifecycle states
+## Core Building Blocks
+- **Samples**: `Forge.Sample` carries `id`, `pipeline`, `data`, `measurements`, status (`:pending`, `:measured`, `:ready`, `:labeled`, `:skipped`, `:dlq`), and timestamps.
+- **Pipelines**: `use Forge.Pipeline` to declare `pipeline/2` blocks with `source`, `stage`, `measurement`, and `storage` entries. Introspection helpers: `__pipeline__/1`, `__pipelines__/0`.
+- **Sources**: Behaviour-driven inputs; built-ins include `Forge.Source.Static` (fixed list) and `Forge.Source.Generator` (function-based). Implement `init/1`, `fetch/1`, `cleanup/1` for custom data feeds.
+- **Stages**: `Forge.Stage` behaviour for per-sample transforms. Optional `async?/0`, `concurrency/0`, and `timeout/0` guide execution. `Forge.Stage.Executor` applies stages with `Forge.RetryPolicy` and `Forge.ErrorClassifier` to decide retries vs. DLQ.
+- **Measurements**: `Forge.Measurement` behaviour with `key/0`, `version/0`, and `compute/1`, plus optional async, batch, dependencies, and timeouts. `Forge.Measurement.Orchestrator` provides cached, versioned measurement storage with dependency ordering and batch execution.
+- **Manifests**: `Forge.Manifest` and `Forge.Manifest.Hash` capture deterministic hashes of pipeline configuration, git SHA, and secret usage for reproducibility.
+- **Human-in-the-loop**: `Forge.AnvilBridge` adapters (Mock, Direct stub, HTTP stub) publish samples to Anvil and sync labels; convert samples with `sample_to_dto/2`.
 
-## Core Abstractions
+## Runners
+- **GenServer runner (`Forge.Runner`)**: Pulls all samples from the source, applies stages with retry policies, computes measurements (sync and async), optionally persists via storage, and emits telemetry.
+- **Streaming runner (`Forge.Runner.Streaming`)**: Lazily processes samples with optional async stages and bounded concurrency, suitable for large datasets and backpressure-aware consumers.
 
-### Source
-Behaviours for generating or providing samples to the pipeline. Implementations include:
-- `Forge.Source.Static` - Samples from a static list
-- `Forge.Source.Generator` - Samples from a generator function
+### Quick Start
 
-### Pipeline
-Defines a series of stages that process samples. Pipelines are configured with:
-- Source configuration
-- Ordered stages for transformation
-- Measurement definitions
-- Storage backend
+Define a pipeline:
 
-### Stage
-Behaviours for transforming samples as they move through the pipeline. Stages are composable and can:
-- Filter samples
-- Transform sample data
-- Enrich samples with additional information
-- Change sample status
-
-### Measurement
-Behaviours for computing metrics and measurements on samples. Can be executed:
-- Synchronously during pipeline execution
-- Asynchronously for expensive computations
-
-### Sample
-Core data structure representing a sample:
 ```elixir
-%Forge.Sample{
-  id: "unique-id",
-  pipeline: :my_pipeline,
-  data: %{key: "value"},
-  measurements: %{},
-  status: :pending,
-  created_at: ~U[2025-01-01 00:00:00Z],
-  measured_at: nil
-}
+defmodule MyApp.Pipelines do
+  use Forge.Pipeline
+
+  pipeline :narratives do
+    source Forge.Source.Generator,
+      count: 3,
+      generator: fn idx -> %{id: idx, text: "narrative-#{idx}"} end
+
+    stage MyApp.NormalizeStage
+    measurement MyApp.Measurements.Length
+    storage Forge.Storage.ETS, table: :narrative_samples
+  end
+end
 ```
 
-Lifecycle states: `:pending` -> `:measured` -> `:ready` -> `:labeled` or `:skipped`
+Run it with the GenServer runner:
 
-### Storage
-Behaviours for persisting samples. Implementations include:
-- `Forge.Storage.ETS` - In-memory ETS-based storage
-- Custom backends (database, file system, cloud storage, etc.)
+```elixir
+{:ok, runner} =
+  Forge.Runner.start_link(pipeline_module: MyApp.Pipelines, pipeline_name: :narratives)
+
+samples = Forge.Runner.run(runner)
+Forge.Runner.stop(runner)
+```
+
+Stream it with backpressure instead:
+
+```elixir
+stream =
+  MyApp.Pipelines.__pipeline__(:narratives)
+  |> Forge.Runner.Streaming.run(concurrency: 8)
+
+stream |> Enum.take(10)
+```
+
+## Measurements & Orchestration
+- Implement measurement modules with unique `key/0` and `version/0`. Opt into batching via `batch_capable?/0` and `compute_batch/1` or mark `async?/0` for fire-and-forget.
+- `Forge.Measurement.Orchestrator` caches results in `forge_measurements` (Ecto) and supports dependency graphs:
+
+```elixir
+{:ok, :computed, value} =
+  Forge.Measurement.Orchestrator.measure_sample(sample_id, MyApp.Measurements.Length, [])
+```
+
+## Persistence & Artifacts
+- **Sample storage**: `Forge.Storage.ETS` (fast, in-memory) and `Forge.Storage.Postgres` (durable, with lineage via `forge_samples`, stage executions, measurements). Database migrations live in `priv/repo/migrations`; run `mix forge.setup` to create and migrate.
+- **Artifacts**: `Forge.ArtifactStorage.Local` stores blobs content-addressed on disk and emits telemetry; `Forge.ArtifactStorage.S3` provides the interface for a future ExAws-backed adapter.
+
+## Observability
+- Telemetry events cover pipelines, stages, measurements, storage, and DLQ moves (`Forge.Telemetry`).
+- Prebuilt metric specs are available in `Forge.Telemetry.Metrics`.
+- Optional OpenTelemetry tracing via `Forge.Telemetry.OTel` when configured.
+- See `docs/telemetry.md` for event and metric details.
+
+## Anvil Integration
+- Configure the Anvil bridge adapter via `config :forge, :anvil_bridge_adapter, Forge.AnvilBridge.Mock` (default), `Direct`, or `HTTP`.
+- Publish samples or batches with `Forge.AnvilBridge.publish_sample/2` and `publish_batch/2`; fetch or sync labels with `get_labels/1` and `sync_labels/2`.
 
 ## Installation
 
-Add `forge` to your list of dependencies in `mix.exs`:
+Add the dependency to `mix.exs`:
 
 ```elixir
 def deps do
   [
-    {:forge, "~> 0.1.0"}
+    {:forge_ex, "~> 0.1.0"}
   ]
 end
 ```
 
-## Usage Examples
-
-### Basic Pipeline
-
-```elixir
-# Define a simple pipeline
-defmodule MyApp.Pipeline do
-  use Forge.Pipeline
-
-  pipeline :data_processing do
-    source Forge.Source.Static, data: [
-      %{value: 10},
-      %{value: 20},
-      %{value: 30}
-    ]
-
-    stage MyApp.Stages.Normalize
-    stage MyApp.Stages.Validate
-
-    measurement MyApp.Measurements.Mean
-    measurement MyApp.Measurements.StdDev
-
-    storage Forge.Storage.ETS, table: :samples
-  end
-end
-
-# Run the pipeline
-{:ok, runner} = Forge.Runner.start_link(pipeline: MyApp.Pipeline, name: :data_processing)
-samples = Forge.Runner.run(runner)
-```
-
-### Custom Stage
-
-```elixir
-defmodule MyApp.Stages.Normalize do
-  @behaviour Forge.Stage
-
-  @impl true
-  def process(sample) do
-    normalized_value = sample.data.value / 100.0
-    data = Map.put(sample.data, :normalized, normalized_value)
-    {:ok, %{sample | data: data}}
-  end
-end
-```
-
-### Custom Measurement
-
-```elixir
-defmodule MyApp.Measurements.Mean do
-  @behaviour Forge.Measurement
-
-  @impl true
-  def compute(samples) do
-    values = Enum.map(samples, & &1.data.value)
-    mean = Enum.sum(values) / length(values)
-    {:ok, %{mean: mean}}
-  end
-
-  @impl true
-  def async?(), do: false
-end
-```
-
-### Generator Source
-
-```elixir
-defmodule MyApp.Pipeline do
-  use Forge.Pipeline
-
-  pipeline :generated_data do
-    source Forge.Source.Generator,
-      count: 1000,
-      generator: fn index ->
-        %{value: :rand.uniform() * 100, index: index}
-      end
-
-    stage MyApp.Stages.Filter
-    measurement MyApp.Measurements.Distribution
-    storage Forge.Storage.ETS, table: :generated_samples
-  end
-end
-```
-
-## API Documentation
-
-### Main API (`Forge`)
-
-```elixir
-# Create a sample
-Forge.create_sample(pipeline: :my_pipeline, data: %{key: "value"})
-
-# Process samples through a pipeline
-Forge.run_pipeline(:my_pipeline, samples)
-
-# Compute measurements
-Forge.compute_measurements(samples, measurements)
-
-# Store samples
-Forge.store_samples(samples, storage_backend)
-```
-
-### Pipeline Definition
-
-Use the `Forge.Pipeline` behaviour to define your pipelines:
-
-```elixir
-defmodule MyPipeline do
-  use Forge.Pipeline
-
-  pipeline :name do
-    source SourceModule, opts
-    stage StageModule
-    measurement MeasurementModule
-    storage StorageModule, opts
-  end
-end
-```
-
-### Running Pipelines
-
-The `Forge.Runner` GenServer executes pipelines:
-
-```elixir
-# Start a runner
-{:ok, pid} = Forge.Runner.start_link(pipeline: MyPipeline, name: :my_pipeline)
-
-# Run the pipeline
-samples = Forge.Runner.run(pid)
-
-# Get status
-status = Forge.Runner.status(pid)
-```
-
-## Architecture Decisions
-
-See the [Architecture Decision Records (ADRs)](docs/adrs/) for detailed design decisions:
-
-- [ADR-001: Source Behaviour Design](docs/adrs/001-source-behaviour-design.md)
-- [ADR-002: Pipeline Configuration DSL](docs/adrs/002-pipeline-configuration-dsl.md)
-- [ADR-003: Stage Composition Model](docs/adrs/003-stage-composition-model.md)
-- [ADR-004: Measurement Computation Strategy](docs/adrs/004-measurement-computation-strategy.md)
-- [ADR-005: Storage Behaviour and Backends](docs/adrs/005-storage-behaviour-and-backends.md)
-- [ADR-006: Sample Lifecycle States](docs/adrs/006-sample-lifecycle-states.md)
+For Postgres-backed features (storage, measurement orchestrator), configure `Forge.Repo` and run the provided migrations. Defaults use `postgres/postgres` on localhost; override via environment or config.
 
 ## Development
 
 ```bash
-# Get dependencies
-mix deps.get
-
-# Run tests
-mix test
-
-# Run tests with coverage
-mix test --cover
-
-# Generate documentation
-mix docs
+mix deps.get            # Install dependencies
+mix forge.setup         # Create & migrate Postgres schemas (if using Repo-backed features)
+mix test                # Run the test suite (sets up DB via alias)
+mix docs                # Generate ExDoc documentation
 ```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-Copyright 2025 North-Shore-AI
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the LICENSE file.
+MIT License © 2024-2025 North-Shore-AI
