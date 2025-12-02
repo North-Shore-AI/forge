@@ -1,7 +1,9 @@
 defmodule Forge.RunnerTest do
-  use ExUnit.Case, async: true
+  use Supertester.ExUnitFoundation, isolation: :full_isolation
 
   alias Forge.{Runner, Sample}
+
+  import Supertester.Assertions
 
   defmodule TestPipelines do
     use Forge.Pipeline
@@ -54,7 +56,7 @@ defmodule Forge.RunnerTest do
           pipeline_name: :simple
         )
 
-      assert Process.alive?(pid)
+      assert_process_alive(pid)
       Runner.stop(pid)
     end
 
@@ -297,8 +299,10 @@ defmodule Forge.RunnerTest do
 
       Runner.stop(pid)
 
-      # Give it a moment to clean up
-      Process.sleep(10)
+      # Ensure the runner finishes terminating before asserting cleanup
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 1_000
+      assert_process_dead(pid)
 
       # Table should be deleted after cleanup
       assert :ets.whereis(table) == :undefined
