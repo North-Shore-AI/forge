@@ -3,56 +3,6 @@ defmodule Forge.RunnerTest do
 
   alias Forge.{Runner, Sample}
 
-  # Test helpers
-  defmodule SimpleStage do
-    @behaviour Forge.Stage
-
-    def process(sample) do
-      data = Map.update!(sample.data, :value, &(&1 * 2))
-      {:ok, %{sample | data: data}}
-    end
-  end
-
-  defmodule FilterStage do
-    @behaviour Forge.Stage
-
-    def process(sample) do
-      if sample.data.value > 5 do
-        {:ok, sample}
-      else
-        {:skip, :too_small}
-      end
-    end
-  end
-
-  defmodule ErrorStage do
-    @behaviour Forge.Stage
-
-    def process(_sample) do
-      {:error, :intentional_error}
-    end
-  end
-
-  defmodule SyncMeasurement do
-    @behaviour Forge.Measurement
-
-    def compute(samples) do
-      count = length(samples)
-      sum = Enum.reduce(samples, 0, fn s, acc -> acc + s.data.value end)
-      {:ok, %{count: count, sum: sum}}
-    end
-  end
-
-  defmodule AsyncMeasurement do
-    @behaviour Forge.Measurement
-
-    def compute(samples) do
-      {:ok, %{async_count: length(samples)}}
-    end
-
-    def async?(), do: true
-  end
-
   defmodule TestPipelines do
     use Forge.Pipeline
 
@@ -62,7 +12,7 @@ defmodule Forge.RunnerTest do
 
     pipeline :with_stages do
       source(Forge.Source.Static, data: [%{value: 1}, %{value: 2}, %{value: 3}])
-      stage(SimpleStage)
+      stage(TestStages.SimpleStage)
     end
 
     pipeline :with_filter do
@@ -70,17 +20,17 @@ defmodule Forge.RunnerTest do
         data: [%{value: 1}, %{value: 5}, %{value: 10}, %{value: 15}]
       )
 
-      stage(FilterStage)
+      stage(TestStages.FilterStage)
     end
 
     pipeline :with_measurements do
       source(Forge.Source.Static, data: [%{value: 10}, %{value: 20}, %{value: 30}])
-      measurement(SyncMeasurement)
+      measurement(TestStages.SyncMeasurement)
     end
 
     pipeline :with_async_measurement do
       source(Forge.Source.Static, data: [%{value: 1}])
-      measurement(AsyncMeasurement)
+      measurement(TestStages.AsyncMeasurement)
     end
 
     pipeline :with_storage do
@@ -90,8 +40,8 @@ defmodule Forge.RunnerTest do
 
     pipeline :complete_pipeline do
       source(Forge.Source.Generator, count: 5, generator: fn i -> %{value: i + 1} end)
-      stage(SimpleStage)
-      measurement(SyncMeasurement)
+      stage(TestStages.SimpleStage)
+      measurement(TestStages.SyncMeasurement)
       storage(Forge.Storage.ETS, table: :complete_test_storage)
     end
   end
@@ -121,13 +71,24 @@ defmodule Forge.RunnerTest do
     end
 
     test "fails for non-existent pipeline" do
-      {:error, {reason, _}} =
+      # Trap exits to handle the GenServer stopping with an error
+      Process.flag(:trap_exit, true)
+
+      result =
         Runner.start_link(
           pipeline_module: TestPipelines,
           pipeline_name: :non_existent
         )
 
-      assert reason == :error
+      case result do
+        {:error, {reason, _}} ->
+          assert reason == :error
+
+        {:ok, pid} ->
+          # Wait for the EXIT message
+          assert_receive {:EXIT, ^pid, {:error, reason}}, 1000
+          assert reason =~ "Pipeline non_existent not found"
+      end
     end
   end
 
@@ -143,7 +104,7 @@ defmodule Forge.RunnerTest do
 
       assert length(samples) == 3
       assert Enum.all?(samples, &Sample.ready?/1)
-      assert Enum.all?(samples, &Sample.measured?/1)
+      assert Enum.all?(samples, fn s -> s.measured_at != nil end)
 
       Runner.stop(pid)
     end
@@ -191,7 +152,7 @@ defmodule Forge.RunnerTest do
 
       samples = Runner.run(pid)
 
-      assert Enum.all?(samples, &Sample.measured?/1)
+      assert Enum.all?(samples, fn s -> s.measured_at != nil end)
 
       # All samples should have same measurements (aggregate)
       sample = hd(samples)
@@ -212,7 +173,7 @@ defmodule Forge.RunnerTest do
 
       # Async measurements don't block, so they won't be in sample.measurements
       assert length(samples) == 1
-      assert hd(samples).status == :measured
+      assert hd(samples).status == :ready
 
       Runner.stop(pid)
     end
@@ -239,7 +200,9 @@ defmodule Forge.RunnerTest do
       assert length(stored) == 1
 
       Runner.stop(pid)
-      :ets.delete(table)
+
+      # Clean up table if it still exists
+      if :ets.whereis(table) != :undefined, do: :ets.delete(table)
     end
 
     test "runs complete pipeline end-to-end" do
@@ -259,7 +222,7 @@ defmodule Forge.RunnerTest do
       # Verify all aspects
       assert length(samples) == 5
       assert Enum.all?(samples, &Sample.ready?/1)
-      assert Enum.all?(samples, &Sample.measured?/1)
+      assert Enum.all?(samples, fn s -> s.measured_at != nil end)
 
       # Values should be doubled by SimpleStage
       values = Enum.map(samples, & &1.data.value)
@@ -274,7 +237,9 @@ defmodule Forge.RunnerTest do
       assert length(stored) == 5
 
       Runner.stop(pid)
-      :ets.delete(table)
+
+      # Clean up table if it still exists
+      if :ets.whereis(table) != :undefined, do: :ets.delete(table)
     end
   end
 
@@ -317,7 +282,7 @@ defmodule Forge.RunnerTest do
 
   describe "lifecycle" do
     test "cleans up resources on stop" do
-      table = :lifecycle_test_storage
+      table = :runner_test_storage
 
       {:ok, pid} =
         Runner.start_link(

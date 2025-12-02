@@ -26,13 +26,13 @@ defmodule Forge.PipelineTest do
 
     pipeline :with_stages do
       source(Forge.Source.Static, data: [%{value: 1}])
-      stage(TestStage1)
-      stage(TestStage2, opt: :value)
+      stage(Forge.PipelineTest.TestStage1)
+      stage(Forge.PipelineTest.TestStage2, opt: :value)
     end
 
     pipeline :with_measurements do
       source(Forge.Source.Static, data: [%{value: 1}])
-      measurement(TestMeasurement)
+      measurement(Forge.PipelineTest.TestMeasurement)
     end
 
     pipeline :with_storage do
@@ -43,10 +43,10 @@ defmodule Forge.PipelineTest do
     pipeline :complete do
       source(Forge.Source.Generator, count: 10, generator: fn i -> %{index: i} end)
 
-      stage(TestStage1)
-      stage(TestStage2)
+      stage(Forge.PipelineTest.TestStage1)
+      stage(Forge.PipelineTest.TestStage2)
 
-      measurement(TestMeasurement)
+      measurement(Forge.PipelineTest.TestMeasurement)
 
       storage(Forge.Storage.ETS, table: :complete_table)
     end
@@ -68,15 +68,15 @@ defmodule Forge.PipelineTest do
       config = TestPipelines.__pipeline__(:with_stages)
 
       assert config.stages == [
-               {TestStage1, []},
-               {TestStage2, [opt: :value]}
+               {Forge.PipelineTest.TestStage1, []},
+               {Forge.PipelineTest.TestStage2, [opt: :value]}
              ]
     end
 
     test "defines pipeline with measurements" do
       config = TestPipelines.__pipeline__(:with_measurements)
 
-      assert config.measurements == [{TestMeasurement, []}]
+      assert config.measurements == [{Forge.PipelineTest.TestMeasurement, []}]
     end
 
     test "defines pipeline with storage" do
@@ -126,6 +126,42 @@ defmodule Forge.PipelineTest do
           end
         end
       end
+    end
+  end
+
+  describe "option evaluation" do
+    test "pipeline DSL evaluates data options correctly" do
+      config = TestPipelines.__pipeline__(:simple)
+
+      # The data should be actual maps, not AST tuples
+      assert is_list(config.source_opts[:data])
+
+      # Get first element and verify it's an actual map, not AST
+      first_item = hd(config.source_opts[:data])
+      assert is_map(first_item)
+      assert first_item == %{value: 1}
+      refute match?({:%{}, _, _}, first_item)
+    end
+
+    test "pipeline DSL evaluates keyword list options correctly" do
+      config = TestPipelines.__pipeline__(:with_storage)
+
+      # Table name should be an atom, not AST
+      assert config.storage_opts[:table] == :test_table
+      refute match?({_, _, _}, config.storage_opts[:table])
+    end
+
+    test "pipeline DSL evaluates function options correctly" do
+      config = TestPipelines.__pipeline__(:complete)
+
+      # Generator should be a function, not AST
+      generator = config.source_opts[:generator]
+      assert is_function(generator, 1)
+
+      # Verify function works
+      result = generator.(5)
+      assert is_map(result)
+      assert result[:index] == 5
     end
   end
 end

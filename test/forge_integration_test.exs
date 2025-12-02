@@ -7,77 +7,6 @@ defmodule ForgeIntegrationTest do
   defmodule DataPipeline do
     use Forge.Pipeline
 
-    # Stages
-    defmodule Normalize do
-      @behaviour Forge.Stage
-
-      def process(sample) do
-        value = sample.data.raw_value / 100.0
-        data = Map.put(sample.data, :normalized, value)
-        {:ok, %{sample | data: data}}
-      end
-    end
-
-    defmodule Validate do
-      @behaviour Forge.Stage
-
-      def process(sample) do
-        if sample.data.normalized >= 0 and sample.data.normalized <= 10 do
-          {:ok, sample}
-        else
-          {:skip, :out_of_range}
-        end
-      end
-    end
-
-    defmodule Enrich do
-      @behaviour Forge.Stage
-
-      def process(sample) do
-        category =
-          cond do
-            sample.data.normalized < 3 -> :low
-            sample.data.normalized < 7 -> :medium
-            true -> :high
-          end
-
-        data = Map.put(sample.data, :category, category)
-        {:ok, %{sample | data: data}}
-      end
-    end
-
-    # Measurements
-    defmodule Statistics do
-      @behaviour Forge.Measurement
-
-      def compute(samples) do
-        values = Enum.map(samples, & &1.data.normalized)
-
-        stats = %{
-          count: length(values),
-          mean: Enum.sum(values) / length(values),
-          min: Enum.min(values),
-          max: Enum.max(values)
-        }
-
-        {:ok, stats}
-      end
-    end
-
-    defmodule CategoryDistribution do
-      @behaviour Forge.Measurement
-
-      def compute(samples) do
-        distribution =
-          samples
-          |> Enum.group_by(& &1.data.category)
-          |> Enum.map(fn {cat, samples} -> {cat, length(samples)} end)
-          |> Map.new()
-
-        {:ok, %{distribution: distribution}}
-      end
-    end
-
     # Pipeline definition
     pipeline :data_processing do
       source(Forge.Source.Generator,
@@ -91,12 +20,12 @@ defmodule ForgeIntegrationTest do
         end
       )
 
-      stage(Normalize)
-      stage(Validate)
-      stage(Enrich)
+      stage(TestStages.Normalize)
+      stage(TestStages.Validate)
+      stage(TestStages.Enrich)
 
-      measurement(Statistics)
-      measurement(CategoryDistribution)
+      measurement(TestStages.Statistics)
+      measurement(TestStages.CategoryDistribution)
 
       storage(Forge.Storage.ETS, table: :integration_test_samples)
     end
@@ -135,7 +64,7 @@ defmodule ForgeIntegrationTest do
 
     # All returned samples should be ready and measured
     assert Enum.all?(samples, &Sample.ready?/1)
-    assert Enum.all?(samples, &Sample.measured?/1)
+    assert Enum.all?(samples, fn s -> s.measured_at != nil end)
 
     # All samples should have normalized values in valid range
     assert Enum.all?(samples, fn s ->
@@ -199,10 +128,10 @@ defmodule ForgeIntegrationTest do
       use Forge.Pipeline
 
       pipeline :lifecycle do
-        source(Forge.Source.Static, data: [%{value: 1}])
+        source(Forge.Source.Static, data: [%{value: 1, raw_value: 100}])
 
-        stage(DataPipeline.Normalize)
-        measurement(DataPipeline.Statistics)
+        stage(TestStages.Normalize)
+        measurement(TestStages.Statistics)
         storage(Forge.Storage.ETS, table: :lifecycle_test)
       end
     end
@@ -228,7 +157,11 @@ defmodule ForgeIntegrationTest do
     assert sample.created_at != nil
 
     Runner.stop(runner)
-    :ets.delete(:lifecycle_test)
+
+    # Clean up table if it still exists
+    if :ets.whereis(:lifecycle_test) != :undefined do
+      :ets.delete(:lifecycle_test)
+    end
   end
 
   test "handling large batch of samples" do
@@ -239,10 +172,10 @@ defmodule ForgeIntegrationTest do
         source(Forge.Source.Generator,
           count: 10_000,
           batch_size: 1000,
-          generator: fn i -> %{index: i, value: rem(i, 100)} end
+          generator: fn i -> %{index: i, value: rem(i, 100), raw_value: rem(i, 100)} end
         )
 
-        stage(DataPipeline.Normalize)
+        stage(TestStages.Normalize)
 
         storage(Forge.Storage.ETS, table: :large_batch_test)
       end
@@ -271,24 +204,16 @@ defmodule ForgeIntegrationTest do
     assert status.samples_processed == 10_000
 
     Runner.stop(runner)
-    :ets.delete(:large_batch_test)
+
+    # Clean up table if it still exists
+    if :ets.whereis(:large_batch_test) != :undefined do
+      :ets.delete(:large_batch_test)
+    end
   end
 
   test "error handling and skipped samples" do
     defmodule ErrorHandlingPipeline do
       use Forge.Pipeline
-
-      defmodule SkipHalf do
-        @behaviour Forge.Stage
-
-        def process(sample) do
-          if rem(sample.data.value, 2) == 0 do
-            {:ok, sample}
-          else
-            {:skip, :odd_value}
-          end
-        end
-      end
 
       pipeline :error_handling do
         source(Forge.Source.Generator,
@@ -296,7 +221,7 @@ defmodule ForgeIntegrationTest do
           generator: fn i -> %{value: i} end
         )
 
-        stage(SkipHalf)
+        stage(TestStages.SkipHalf)
       end
     end
 

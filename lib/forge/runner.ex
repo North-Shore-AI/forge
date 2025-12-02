@@ -240,7 +240,7 @@ defmodule Forge.Runner do
     Enum.reduce(samples, {[], []}, fn sample, {processed, skipped} ->
       case process_through_stages(sample, stages) do
         {:ok, processed_sample} ->
-          {[Sample.mark_ready(processed_sample) | processed], skipped}
+          {[processed_sample | processed], skipped}
 
         {:skip, _reason} ->
           {processed, [Sample.mark_skipped(sample) | skipped]}
@@ -300,9 +300,14 @@ defmodule Forge.Runner do
           sample
           |> Sample.add_measurements(sync_results)
           |> Sample.mark_measured()
+          |> Sample.mark_ready()
         end)
       else
-        Enum.map(samples, &Sample.mark_measured/1)
+        Enum.map(samples, fn sample ->
+          sample
+          |> Sample.mark_measured()
+          |> Sample.mark_ready()
+        end)
       end
 
     # Start async measurements (fire and forget)
