@@ -8,6 +8,7 @@ defmodule Forge.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      Forge.Repo
       # Starts a worker by calling: Forge.Worker.start_link(arg)
       # {Forge.Worker, arg}
     ]

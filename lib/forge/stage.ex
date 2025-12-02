@@ -52,4 +52,65 @@ defmodule Forge.Stage do
               {:ok, Forge.Sample.t()}
               | {:skip, reason :: any()}
               | {:error, reason :: any()}
+
+  @doc """
+  Whether this stage should be executed asynchronously.
+
+  Async stages are executed concurrently with backpressure control.
+  Useful for I/O-bound stages (LLM calls, embeddings, HTTP APIs).
+
+  Defaults to false (synchronous execution).
+  """
+  @callback async?() :: boolean()
+
+  @doc """
+  Concurrency limit for async stages.
+
+  Limits the number of concurrent executions for this stage.
+  Defaults to System.schedulers_online() if not specified.
+  """
+  @callback concurrency() :: pos_integer()
+
+  @doc """
+  Timeout for stage execution in milliseconds.
+
+  Stages exceeding this timeout will be killed.
+  Defaults to 30_000 (30 seconds).
+  """
+  @callback timeout() :: pos_integer()
+
+  @optional_callbacks [async?: 0, concurrency: 0, timeout: 0]
+
+  @doc """
+  Helper to check if a stage module supports async execution.
+  """
+  def async?(stage_module) do
+    if function_exported?(stage_module, :async?, 0) do
+      stage_module.async?()
+    else
+      false
+    end
+  end
+
+  @doc """
+  Helper to get stage concurrency setting.
+  """
+  def concurrency(stage_module) do
+    if function_exported?(stage_module, :concurrency, 0) do
+      stage_module.concurrency()
+    else
+      System.schedulers_online()
+    end
+  end
+
+  @doc """
+  Helper to get stage timeout.
+  """
+  def timeout(stage_module) do
+    if function_exported?(stage_module, :timeout, 0) do
+      stage_module.timeout()
+    else
+      30_000
+    end
+  end
 end

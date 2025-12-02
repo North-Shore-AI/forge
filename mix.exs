@@ -11,6 +11,7 @@ defmodule Forge.MixProject do
       elixir: "~> 1.15",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      aliases: aliases(),
       description: description(),
       package: package(),
       name: "Forge",
@@ -29,6 +30,9 @@ defmodule Forge.MixProject do
 
   defp deps do
     [
+      {:ecto_sql, "~> 3.10"},
+      {:postgrex, "~> 0.17"},
+      {:jason, "~> 1.4"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:supertester, "~> 0.3.1", only: :test}
     ]
@@ -52,6 +56,14 @@ defmodule Forge.MixProject do
       },
       maintainers: ["North-Shore-AI"],
       files: ~w(lib .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
+    ]
+  end
+
+  defp aliases do
+    [
+      "forge.setup": ["ecto.create", "ecto.migrate"],
+      "forge.reset": ["ecto.drop", "forge.setup"],
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"]
     ]
   end
 
