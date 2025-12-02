@@ -2,7 +2,7 @@
 
 # Forge
 
-<img src="assets/forge.svg" alt="Forge Logo" width="280"/>
+<img src="assets/forge.svg" alt="Forge Logo" width="392"/>
 
 </div>
 
