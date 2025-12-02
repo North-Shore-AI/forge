@@ -8,6 +8,18 @@ defmodule Forge.Schema.Artifact do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{
+          id: binary() | nil,
+          artifact_key: String.t() | nil,
+          storage_uri: String.t() | nil,
+          content_hash: String.t() | nil,
+          size_bytes: integer() | nil,
+          content_type: String.t() | nil,
+          sample_id: binary() | nil,
+          sample: Forge.Schema.Sample.t() | Ecto.Association.NotLoaded.t() | nil,
+          inserted_at: DateTime.t() | nil
+        }
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 

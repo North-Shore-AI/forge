@@ -8,6 +8,19 @@ defmodule Forge.Schema.StageExecution do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{
+          id: integer() | nil,
+          stage_name: String.t() | nil,
+          stage_config_hash: String.t() | nil,
+          attempt: integer(),
+          status: String.t(),
+          error_message: String.t() | nil,
+          duration_ms: integer() | nil,
+          applied_at: DateTime.t() | nil,
+          sample_id: binary() | nil,
+          sample: Forge.Schema.Sample.t() | Ecto.Association.NotLoaded.t() | nil
+        }
+
   @primary_key {:id, :id, autogenerate: true}
   @foreign_key_type :binary_id
 

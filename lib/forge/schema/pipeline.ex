@@ -8,6 +8,18 @@ defmodule Forge.Schema.Pipeline do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{
+          id: binary() | nil,
+          name: String.t() | nil,
+          manifest_hash: String.t() | nil,
+          manifest: map() | nil,
+          status: String.t(),
+          deleted_at: DateTime.t() | nil,
+          samples: [Forge.Schema.Sample.t()] | Ecto.Association.NotLoaded.t(),
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 

@@ -14,6 +14,8 @@ defmodule Forge.PipelineTest do
 
   defmodule TestMeasurement do
     @behaviour Forge.Measurement
+    def key, do: "test:pipeline_measurement"
+    def version, do: 1
     def compute(_samples), do: {:ok, %{count: 1}}
   end
 

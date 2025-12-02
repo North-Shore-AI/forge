@@ -25,7 +25,7 @@ defmodule Forge.Stage.Executor do
 
   require Logger
 
-  alias Forge.{RetryPolicy, ErrorClassifier}
+  alias Forge.{RetryPolicy, ErrorClassifier, Telemetry}
 
   @doc """
   Applies a stage to a sample with retry logic.
@@ -44,54 +44,80 @@ defmodule Forge.Stage.Executor do
   """
   def apply_with_retry(sample, stage_module) do
     policy = get_retry_policy(stage_module)
+    stage = stage_name(stage_module)
 
-    Enum.reduce_while(1..policy.max_attempts, {:error, :no_attempts}, fn attempt, _acc ->
-      case apply_stage(sample, stage_module) do
-        {:ok, result} ->
-          if attempt > 1 do
-            Logger.info(
-              "Stage #{stage_name(stage_module)} succeeded on attempt #{attempt} for sample #{sample.id}"
-            )
-          end
+    # Emit stage start event
+    Telemetry.stage_start(sample.id, stage)
+    start_time = System.monotonic_time()
 
-          {:halt, {:ok, result}}
-
-        {:skip, _reason} = skip_result ->
-          # Skip is not an error, halt immediately
-          {:halt, skip_result}
-
-        {:error, error} = err ->
-          if ErrorClassifier.retriable?(error, policy) and attempt < policy.max_attempts do
-            # Retriable error with attempts remaining
-            delay = RetryPolicy.compute_delay(attempt, policy)
-
-            Logger.warning(
-              "Stage #{stage_name(stage_module)} failed on attempt #{attempt}/#{policy.max_attempts} " <>
-                "for sample #{sample.id}: #{inspect(error)}. Retrying in #{delay}ms"
-            )
-
-            # Use Process.sleep for delay (tests can override with smaller delays)
-            Process.sleep(delay)
-
-            {:cont, err}
-          else
-            # Non-retriable or exhausted attempts
-            if attempt >= policy.max_attempts do
-              Logger.error(
-                "Stage #{stage_name(stage_module)} failed after #{policy.max_attempts} attempts " <>
-                  "for sample #{sample.id}: #{inspect(error)}"
-              )
-            else
-              Logger.error(
-                "Stage #{stage_name(stage_module)} failed with non-retriable error " <>
-                  "for sample #{sample.id}: #{inspect(error)}"
+    result =
+      Enum.reduce_while(1..policy.max_attempts, {:error, :no_attempts}, fn attempt, _acc ->
+        case apply_stage(sample, stage_module) do
+          {:ok, result} ->
+            if attempt > 1 do
+              Logger.info(
+                "Stage #{stage} succeeded on attempt #{attempt} for sample #{sample.id}"
               )
             end
 
-            {:halt, {:error, :max_retries, error}}
-          end
-      end
-    end)
+            {:halt, {:ok, result}}
+
+          {:skip, _reason} = skip_result ->
+            # Skip is not an error, halt immediately
+            {:halt, skip_result}
+
+          {:error, error} = err ->
+            if ErrorClassifier.retriable?(error, policy) and attempt < policy.max_attempts do
+              # Retriable error with attempts remaining
+              delay = RetryPolicy.compute_delay(attempt, policy)
+
+              Logger.warning(
+                "Stage #{stage} failed on attempt #{attempt}/#{policy.max_attempts} " <>
+                  "for sample #{sample.id}: #{inspect(error)}. Retrying in #{delay}ms"
+              )
+
+              # Emit retry event
+              Telemetry.stage_retry(sample.id, stage, attempt, delay, inspect(error))
+
+              # Use Process.sleep for delay (tests can override with smaller delays)
+              Process.sleep(delay)
+
+              {:cont, err}
+            else
+              # Non-retriable or exhausted attempts
+              if attempt >= policy.max_attempts do
+                Logger.error(
+                  "Stage #{stage} failed after #{policy.max_attempts} attempts " <>
+                    "for sample #{sample.id}: #{inspect(error)}"
+                )
+              else
+                Logger.error(
+                  "Stage #{stage} failed with non-retriable error " <>
+                    "for sample #{sample.id}: #{inspect(error)}"
+                )
+              end
+
+              {:halt, {:error, :max_retries, error}}
+            end
+        end
+      end)
+
+    duration = System.monotonic_time() - start_time
+
+    # Emit stage stop event
+    case result do
+      {:ok, _} ->
+        Telemetry.stage_stop(sample.id, stage, duration, :success, nil)
+
+      {:skip, _} ->
+        Telemetry.stage_stop(sample.id, stage, duration, :skip, nil)
+
+      {:error, :max_retries, error} ->
+        error_type = ErrorClassifier.classify_error(error)
+        Telemetry.stage_stop(sample.id, stage, duration, :error, error_type)
+    end
+
+    result
   end
 
   @doc """

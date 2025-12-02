@@ -8,6 +8,25 @@ defmodule Forge.Schema.Sample do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{
+          id: binary() | nil,
+          version: integer(),
+          status: String.t(),
+          data: map(),
+          manifest_hash: String.t() | nil,
+          deleted_at: DateTime.t() | nil,
+          pipeline_id: binary() | nil,
+          parent_sample_id: binary() | nil,
+          pipeline: Forge.Schema.Pipeline.t() | Ecto.Association.NotLoaded.t() | nil,
+          parent_sample: Forge.Schema.Sample.t() | Ecto.Association.NotLoaded.t() | nil,
+          child_samples: [Forge.Schema.Sample.t()] | Ecto.Association.NotLoaded.t(),
+          stage_executions: [Forge.Schema.StageExecution.t()] | Ecto.Association.NotLoaded.t(),
+          measurements: [Forge.Schema.MeasurementRecord.t()] | Ecto.Association.NotLoaded.t(),
+          artifacts: [Forge.Schema.Artifact.t()] | Ecto.Association.NotLoaded.t(),
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 

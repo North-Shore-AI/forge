@@ -8,6 +8,16 @@ defmodule Forge.Schema.MeasurementRecord do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{
+          id: binary() | nil,
+          measurement_key: String.t() | nil,
+          measurement_version: integer(),
+          value: map() | nil,
+          computed_at: DateTime.t() | nil,
+          sample_id: binary() | nil,
+          sample: Forge.Schema.Sample.t() | Ecto.Association.NotLoaded.t() | nil
+        }
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 

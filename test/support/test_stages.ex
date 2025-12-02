@@ -48,6 +48,9 @@ defmodule TestStages do
     @moduledoc "Computes statistical measurements"
     @behaviour Forge.Measurement
 
+    def key, do: "test:statistics"
+    def version, do: 1
+
     def compute(samples) do
       values = Enum.map(samples, & &1.data.normalized)
 
@@ -65,6 +68,9 @@ defmodule TestStages do
   defmodule CategoryDistribution do
     @moduledoc "Computes category distribution"
     @behaviour Forge.Measurement
+
+    def key, do: "test:category_distribution"
+    def version, do: 1
 
     def compute(samples) do
       distribution =
@@ -127,6 +133,9 @@ defmodule TestStages do
     @moduledoc "Synchronous test measurement"
     @behaviour Forge.Measurement
 
+    def key, do: "test:sync_measurement"
+    def version, do: 1
+
     def compute(samples) do
       count = length(samples)
       sum = Enum.reduce(samples, 0, fn s, acc -> acc + s.data.value end)
@@ -137,6 +146,9 @@ defmodule TestStages do
   defmodule AsyncMeasurement do
     @moduledoc "Asynchronous test measurement"
     @behaviour Forge.Measurement
+
+    def key, do: "test:async_measurement"
+    def version, do: 1
 
     def compute(samples) do
       {:ok, %{async_count: length(samples)}}

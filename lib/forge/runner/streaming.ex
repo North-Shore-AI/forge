@@ -26,7 +26,7 @@ defmodule Forge.Runner.Streaming do
       |> Stream.run()
   """
 
-  alias Forge.{Sample, Stage}
+  alias Forge.{Sample, Stage, Telemetry}
   require Logger
 
   @doc """
@@ -203,15 +203,46 @@ defmodule Forge.Runner.Streaming do
   end
 
   defp apply_stage(sample, stage_module) do
-    stage_module.process(sample)
-  rescue
-    e ->
-      Logger.error(
-        "Stage #{stage_module} crashed: #{Exception.format(:error, e, __STACKTRACE__)}"
-      )
+    stage_name = stage_module |> Module.split() |> List.last()
 
-      {:error, e}
+    # Emit stage start event
+    Telemetry.stage_start(sample.id, stage_name)
+
+    start_time = System.monotonic_time()
+
+    result =
+      try do
+        stage_module.process(sample)
+      rescue
+        e ->
+          Logger.error(
+            "Stage #{stage_module} crashed: #{Exception.format(:error, e, __STACKTRACE__)}"
+          )
+
+          {:error, e}
+      end
+
+    duration = System.monotonic_time() - start_time
+
+    # Emit stage stop event
+    case result do
+      {:ok, _} ->
+        Telemetry.stage_stop(sample.id, stage_name, duration, :success, nil)
+
+      {:skip, _} ->
+        Telemetry.stage_stop(sample.id, stage_name, duration, :skip, nil)
+
+      {:error, error} ->
+        error_type = classify_error(error)
+        Telemetry.stage_stop(sample.id, stage_name, duration, :error, error_type)
+    end
+
+    result
   end
+
+  defp classify_error(429), do: :rate_limit
+  defp classify_error(error) when is_integer(error) and error >= 500, do: :server_error
+  defp classify_error(_), do: :unknown
 
   defp compute_measurements(stream, measurements) do
     # For streaming, we compute measurements inline per sample

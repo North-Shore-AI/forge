@@ -262,9 +262,9 @@ defmodule Forge.ManifestTest do
       }
 
       manifest1 = Manifest.from_pipeline(pipeline, git_sha: "abc123")
-      # Ensure different timestamps
-      Process.sleep(10)
+      # Create manifest at a different time by explicitly setting a different timestamp
       manifest2 = Manifest.from_pipeline(pipeline, git_sha: "abc123")
+      manifest2 = %{manifest2 | created_at: DateTime.add(manifest2.created_at, 1, :second)}
 
       # Timestamps are different but configs are the same
       assert manifest1.created_at != manifest2.created_at

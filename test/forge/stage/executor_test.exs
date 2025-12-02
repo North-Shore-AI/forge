@@ -110,6 +110,7 @@ defmodule Forge.Stage.ExecutorTest do
       assert result.data.processed == true
     end
 
+    @tag capture_log: true
     test "returns error immediately for non-retriable error" do
       sample = Sample.new(id: "1", pipeline: :test, data: %{})
       stage = AlwaysFailStage
@@ -145,6 +146,7 @@ defmodule Forge.Stage.ExecutorTest do
       assert final_sample.data.success == true
     end
 
+    @tag capture_log: true
     test "fails after max attempts with retriable error" do
       {:ok, agent} = CountingAgent.start_link()
       sample = Sample.new(id: "1", pipeline: :test, data: %{counter_agent: agent})
@@ -157,6 +159,7 @@ defmodule Forge.Stage.ExecutorTest do
       assert state.attempts == 3
     end
 
+    @tag capture_log: true
     test "fails immediately for non-retriable error code" do
       sample = Sample.new(id: "1", pipeline: :test, data: %{})
       stage = NonRetriableErrorStage
@@ -243,6 +246,7 @@ defmodule Forge.Stage.ExecutorTest do
   end
 
   describe "DLQ integration" do
+    @tag capture_log: true
     test "sample is marked for DLQ after max retries" do
       {:ok, agent} = CountingAgent.start_link()
       sample = Sample.new(id: "1", pipeline: :test, data: %{counter_agent: agent})

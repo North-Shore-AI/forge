@@ -16,7 +16,7 @@ defmodule Forge.Storage.Postgres do
 
   @behaviour Forge.Storage
 
-  alias Forge.Repo
+  alias Forge.{Repo, Telemetry}
   alias Forge.Schema.{Pipeline, Sample, StageExecution, MeasurementRecord}
 
   require Logger
@@ -141,8 +141,24 @@ defmodule Forge.Storage.Postgres do
         Sample.changeset(%Sample{}, attrs)
       end
 
-    case Repo.insert(changeset, on_conflict: :replace_all, conflict_target: :id) do
+    # Measure storage timing and size
+    start_time = System.monotonic_time()
+    size_bytes = byte_size(:erlang.term_to_binary(sample.data))
+
+    result = Repo.insert(changeset, on_conflict: :replace_all, conflict_target: :id)
+
+    duration = System.monotonic_time() - start_time
+
+    case result do
       {:ok, db_sample} ->
+        # Emit telemetry event
+        Telemetry.storage_sample_write(
+          sample.id || db_sample.id,
+          duration,
+          size_bytes,
+          :postgres
+        )
+
         # Store measurements if present
         store_measurements(sample, db_sample.id)
         {:ok, db_sample}

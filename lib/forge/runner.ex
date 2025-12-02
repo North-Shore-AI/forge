@@ -26,7 +26,7 @@ defmodule Forge.Runner do
   use GenServer
   require Logger
 
-  alias Forge.{Sample, Stage.Executor}
+  alias Forge.{Sample, Stage.Executor, Telemetry}
 
   defmodule State do
     @moduledoc false
@@ -129,12 +129,56 @@ defmodule Forge.Runner do
     run_id = generate_run_id()
     new_state = %{state | status: :running, run_id: run_id}
 
-    case execute_pipeline(new_state) do
+    # Emit pipeline start event
+    Telemetry.pipeline_start(
+      pipeline_id(state.pipeline_config),
+      run_id,
+      state.pipeline_config.name
+    )
+
+    start_time = System.monotonic_time()
+
+    result =
+      try do
+        execute_pipeline(new_state)
+      rescue
+        e ->
+          duration = System.monotonic_time() - start_time
+
+          Telemetry.pipeline_exception(
+            pipeline_id(state.pipeline_config),
+            run_id,
+            duration,
+            e.__struct__
+          )
+
+          reraise e, __STACKTRACE__
+      end
+
+    duration = System.monotonic_time() - start_time
+
+    case result do
       {:ok, samples, final_state} ->
+        Telemetry.pipeline_stop(
+          pipeline_id(state.pipeline_config),
+          run_id,
+          duration,
+          :completed,
+          length(samples)
+        )
+
         final_state = %{final_state | status: :idle}
         {:reply, samples, final_state}
 
       {:error, reason} ->
+        Telemetry.pipeline_stop(
+          pipeline_id(state.pipeline_config),
+          run_id,
+          duration,
+          :failed,
+          0
+        )
+
         final_state = %{state | status: :error}
         {:reply, {:error, reason}, final_state}
     end
@@ -257,11 +301,11 @@ defmodule Forge.Runner do
             })
 
           Logger.error("Sample #{sample.id} moved to DLQ after max retries: #{inspect(reason)}")
-          {processed, skipped, [dlq_sample | dlq]}
 
-        {:error, reason} ->
-          Logger.error("Stage error: #{inspect(reason)}")
-          {processed, [Sample.mark_skipped(sample) | skipped], dlq}
+          # Emit DLQ telemetry event
+          Telemetry.dlq_enqueue(sample.id, "pipeline", inspect(reason))
+
+          {processed, skipped, [dlq_sample | dlq]}
       end
     end)
     |> then(fn {processed, skipped, dlq} ->
@@ -285,9 +329,6 @@ defmodule Forge.Runner do
       {:error, :max_retries, reason} ->
         # Propagate max retries error
         {:error, :max_retries, reason}
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 
@@ -353,5 +394,10 @@ defmodule Forge.Runner do
 
   defp generate_sample_id do
     :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
+  end
+
+  defp pipeline_id(pipeline_config) do
+    # Generate a stable identifier for the pipeline
+    to_string(pipeline_config.name)
   end
 end

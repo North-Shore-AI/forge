@@ -73,4 +73,21 @@ defmodule Forge.ErrorClassifier do
   end
 
   defp match_error_tuple?(_, _), do: false
+
+  @doc """
+  Classifies an error into a category for telemetry reporting.
+
+  Returns an atom representing the error type:
+    * `:rate_limit` - HTTP 429 or rate limit errors
+    * `:server_error` - HTTP 5xx errors
+    * `:network_error` - Network/connection errors
+    * `:timeout` - Timeout errors
+    * `:unknown` - Unclassified errors
+  """
+  def classify_error(429), do: :rate_limit
+  def classify_error(error) when is_integer(error) and error >= 500, do: :server_error
+  def classify_error({:error, :timeout}), do: :timeout
+  def classify_error({:error, :econnrefused}), do: :network_error
+  def classify_error({:error, :closed}), do: :network_error
+  def classify_error(_), do: :unknown
 end

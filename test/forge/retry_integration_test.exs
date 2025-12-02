@@ -106,6 +106,7 @@ defmodule Forge.RetryIntegrationTest do
       :ok
     end
 
+    @tag capture_log: true
     test "successfully processes samples after transient failures" do
       {:ok, pid} =
         Runner.start_link(
@@ -129,6 +130,7 @@ defmodule Forge.RetryIntegrationTest do
       Runner.stop(pid)
     end
 
+    @tag capture_log: true
     test "moves samples to DLQ after max retries with permanent failures" do
       {:ok, pid} =
         Runner.start_link(
