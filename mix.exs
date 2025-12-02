@@ -17,7 +17,8 @@ defmodule Forge.MixProject do
       name: "Forge",
       source_url: @source_url,
       homepage_url: @source_url,
-      docs: docs()
+      docs: docs(),
+      dialyzer: dialyzer()
     ]
   end
 
@@ -34,6 +35,7 @@ defmodule Forge.MixProject do
       {:postgrex, "~> 0.17"},
       {:jason, "~> 1.4"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:supertester, "~> 0.3.1", only: :test}
     ]
   end
@@ -93,6 +95,13 @@ defmodule Forge.MixProject do
           Forge.Storage.ETS
         ]
       ]
+    ]
+  end
+
+  defp dialyzer do
+    [
+      plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
+      plt_add_apps: [:mix, :ex_unit]
     ]
   end
 end

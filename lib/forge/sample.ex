@@ -6,7 +6,7 @@ defmodule Forge.Sample do
   The sample struct tracks its data, computed measurements, and lifecycle status.
   """
 
-  @type status :: :pending | :measured | :ready | :labeled | :skipped
+  @type status :: :pending | :measured | :ready | :labeled | :skipped | :dlq
 
   @type t :: %__MODULE__{
           id: String.t(),
@@ -15,7 +15,8 @@ defmodule Forge.Sample do
           measurements: map(),
           status: status(),
           created_at: DateTime.t(),
-          measured_at: DateTime.t() | nil
+          measured_at: DateTime.t() | nil,
+          dlq_reason: map() | nil
         }
 
   @enforce_keys [:id, :pipeline, :data, :created_at]
@@ -26,7 +27,8 @@ defmodule Forge.Sample do
     :created_at,
     measurements: %{},
     status: :pending,
-    measured_at: nil
+    measured_at: nil,
+    dlq_reason: nil
   ]
 
   @doc """
@@ -101,6 +103,26 @@ defmodule Forge.Sample do
   @doc "Marks sample as skipped"
   def mark_skipped(%__MODULE__{} = sample) do
     %{sample | status: :skipped}
+  end
+
+  @doc "Checks if sample is in dead-letter queue"
+  def dlq?(%__MODULE__{status: :dlq}), do: true
+  def dlq?(_), do: false
+
+  @doc """
+  Marks sample for dead-letter queue with reason.
+
+  ## Options
+    * `:stage` - Stage name that failed (required)
+    * `:error` - Error that caused failure (required)
+    * `:attempts` - Number of attempts made (optional)
+  """
+  def mark_dlq(%__MODULE__{} = sample, reason) when is_map(reason) do
+    dlq_reason =
+      reason
+      |> Map.put_new(:timestamp, DateTime.utc_now())
+
+    %{sample | status: :dlq, dlq_reason: dlq_reason}
   end
 
   @doc "Adds measurements to the sample"

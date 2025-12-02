@@ -26,7 +26,7 @@ defmodule Forge.Runner do
   use GenServer
   require Logger
 
-  alias Forge.Sample
+  alias Forge.{Sample, Stage.Executor}
 
   defmodule State do
     @moduledoc false
@@ -37,6 +37,7 @@ defmodule Forge.Runner do
       status: :idle,
       samples_processed: 0,
       samples_skipped: 0,
+      samples_dlq: 0,
       run_id: nil
     ]
   end
@@ -145,6 +146,7 @@ defmodule Forge.Runner do
       status: state.status,
       samples_processed: state.samples_processed,
       samples_skipped: state.samples_skipped,
+      samples_dlq: state.samples_dlq,
       pipeline: state.pipeline_config.name,
       run_id: state.run_id
     }
@@ -183,8 +185,8 @@ defmodule Forge.Runner do
             )
           end)
 
-        # Apply stages
-        {processed, skipped} = apply_stages(samples, state.pipeline_config.stages)
+        # Apply stages with retry logic
+        {processed, skipped, dlq} = apply_stages(samples, state.pipeline_config.stages)
 
         # Compute measurements
         measured = compute_measurements(processed, state.pipeline_config.measurements)
@@ -209,7 +211,8 @@ defmodule Forge.Runner do
           | source_state: new_source_state,
             storage_state: new_storage_state,
             samples_processed: length(measured),
-            samples_skipped: length(skipped)
+            samples_skipped: length(skipped),
+            samples_dlq: length(dlq)
         }
 
         {:ok, measured, new_state}
@@ -237,21 +240,32 @@ defmodule Forge.Runner do
   end
 
   defp apply_stages(samples, stages) do
-    Enum.reduce(samples, {[], []}, fn sample, {processed, skipped} ->
+    Enum.reduce(samples, {[], [], []}, fn sample, {processed, skipped, dlq} ->
       case process_through_stages(sample, stages) do
         {:ok, processed_sample} ->
-          {[processed_sample | processed], skipped}
+          {[processed_sample | processed], skipped, dlq}
 
         {:skip, _reason} ->
-          {processed, [Sample.mark_skipped(sample) | skipped]}
+          {processed, [Sample.mark_skipped(sample) | skipped], dlq}
+
+        {:error, :max_retries, reason} ->
+          # Sample failed after retries, send to DLQ
+          dlq_sample =
+            Sample.mark_dlq(sample, %{
+              error: inspect(reason),
+              stage: "pipeline"
+            })
+
+          Logger.error("Sample #{sample.id} moved to DLQ after max retries: #{inspect(reason)}")
+          {processed, skipped, [dlq_sample | dlq]}
 
         {:error, reason} ->
           Logger.error("Stage error: #{inspect(reason)}")
-          {processed, [Sample.mark_skipped(sample) | skipped]}
+          {processed, [Sample.mark_skipped(sample) | skipped], dlq}
       end
     end)
-    |> then(fn {processed, skipped} ->
-      {Enum.reverse(processed), Enum.reverse(skipped)}
+    |> then(fn {processed, skipped, dlq} ->
+      {Enum.reverse(processed), Enum.reverse(skipped), Enum.reverse(dlq)}
     end)
   end
 
@@ -260,12 +274,17 @@ defmodule Forge.Runner do
   end
 
   defp process_through_stages(sample, [{stage_module, _opts} | rest]) do
-    case stage_module.process(sample) do
+    # Use Executor for retry logic
+    case Executor.apply_with_retry(sample, stage_module) do
       {:ok, processed_sample} ->
         process_through_stages(processed_sample, rest)
 
       {:skip, reason} ->
         {:skip, reason}
+
+      {:error, :max_retries, reason} ->
+        # Propagate max retries error
+        {:error, :max_retries, reason}
 
       {:error, reason} ->
         {:error, reason}

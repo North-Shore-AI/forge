@@ -118,36 +118,30 @@ defmodule Forge.Runner.Streaming do
     )
   end
 
-  defp generate_next_sample(state) do
-    case state do
-      {source_module, source_state, pipeline_name, []} ->
-        case source_module.fetch(source_state) do
-          {:ok, raw_samples, new_state} ->
-            samples =
-              raw_samples
-              |> List.wrap()
-              |> Enum.map(fn data ->
-                Sample.new(
-                  id: generate_sample_id(),
-                  pipeline: pipeline_name,
-                  data: data
-                )
-              end)
+  defp generate_next_sample({source_module, source_state, pipeline_name, []}) do
+    case source_module.fetch(source_state) do
+      {:ok, raw_samples, new_state} ->
+        samples =
+          raw_samples
+          |> List.wrap()
+          |> Enum.map(fn data ->
+            Sample.new(
+              id: generate_sample_id(),
+              pipeline: pipeline_name,
+              data: data
+            )
+          end)
 
-            case samples do
-              [] -> generate_next_sample({source_module, new_state, pipeline_name, []})
-              [first | rest] -> {first, {source_module, new_state, pipeline_name, rest}}
-            end
-
-          {:done, _} ->
-            nil
-
-          {:error, reason} ->
-            Logger.error("Source fetch error: #{inspect(reason)}")
-            nil
+        case samples do
+          [] -> generate_next_sample({source_module, new_state, pipeline_name, []})
+          [first | rest] -> {first, {source_module, new_state, pipeline_name, rest}}
         end
 
-      _ ->
+      {:done, _} ->
+        nil
+
+      {:error, reason} ->
+        Logger.error("Source fetch error: #{inspect(reason)}")
         nil
     end
   end
