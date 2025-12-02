@@ -1,12 +1,16 @@
 <div align="center">
-
-# Forge
-
-<img src="assets/forge.svg" alt="Forge Logo" width="392"/>
-
-**Domain-agnostic sample factory for building repeatable data pipelines in Elixir.**
-
+  <h1>Forge</h1>
+  <p>
+    <img src="assets/forge.svg" alt="Forge Logo" width="392" style="max-width: 100%; display: block; margin: 0 auto;" />
+  </p>
+  <p><strong>Domain-agnostic sample factory for building repeatable data pipelines in Elixir.</strong></p>
 </div>
+
+[![Hex.pm](https://img.shields.io/hexpm/v/forge_ex.svg)](https://hex.pm/packages/forge_ex)
+[![Documentation](https://img.shields.io/badge/docs-hexpm-blue.svg)](https://hexdocs.pm/forge_ex)
+[![Downloads](https://img.shields.io/hexpm/dt/forge_ex.svg)](https://hex.pm/packages/forge_ex)
+[![License](https://img.shields.io/github/license/North-Shore-AI/forge.svg)](LICENSE)
+[![GitHub](https://img.shields.io/badge/github-North--Shore--AI%2Fforge-blue?logo=github)](https://github.com/North-Shore-AI/forge)
 
 Forge helps you generate samples, apply staged transformations, compute measurements, and persist results for dataset creation, evaluation harnesses, enrichment jobs, and analytics workflows.
 
