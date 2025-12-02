@@ -1,17 +1,25 @@
 defmodule Forge.MixProject do
   use Mix.Project
 
+  @version "0.1.0"
+  @source_url "https://github.com/North-Shore-AI/forge"
+
   def project do
     [
       app: :forge,
-      version: "0.1.0",
-      elixir: "~> 1.18",
+      version: @version,
+      elixir: "~> 1.15",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      description: description(),
+      package: package(),
+      name: "Forge",
+      source_url: @source_url,
+      homepage_url: @source_url,
+      docs: docs()
     ]
   end
 
-  # Run "mix help compile.app" to learn about applications.
   def application do
     [
       extra_applications: [:logger],
@@ -19,10 +27,60 @@ defmodule Forge.MixProject do
     ]
   end
 
-  # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:ex_doc, "~> 0.31", only: :dev, runtime: false},
       {:supertester, "~> 0.3.1", only: :test}
+    ]
+  end
+
+  defp description do
+    """
+    Sample factory library for generating, transforming, and computing
+    measurements on arbitrary samples. Domain-agnostic data pipeline
+    orchestration for ML dataset preparation.
+    """
+  end
+
+  defp package do
+    [
+      name: "forge_ex",
+      licenses: ["MIT"],
+      links: %{
+        "GitHub" => @source_url,
+        "Changelog" => "#{@source_url}/blob/main/CHANGELOG.md"
+      },
+      maintainers: ["North-Shore-AI"],
+      files: ~w(lib .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
+    ]
+  end
+
+  defp docs do
+    [
+      main: "Forge",
+      extras: ["README.md", "CHANGELOG.md"],
+      source_ref: "v#{@version}",
+      source_url: @source_url,
+      groups_for_modules: [
+        Core: [
+          Forge,
+          Forge.Sample,
+          Forge.Pipeline
+        ],
+        Behaviours: [
+          Forge.Source,
+          Forge.Stage,
+          Forge.Measurement,
+          Forge.Storage
+        ],
+        Sources: [
+          Forge.Source.Static,
+          Forge.Source.Generator
+        ],
+        Storage: [
+          Forge.Storage.ETS
+        ]
+      ]
     ]
   end
 end

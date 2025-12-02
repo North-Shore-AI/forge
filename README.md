@@ -1,5 +1,7 @@
 # Forge
 
+![Forge Logo](assets/forge.svg)
+
 A domain-agnostic sample factory library for generating, transforming, and computing measurements on arbitrary samples in Elixir.
 
 ## Purpose
