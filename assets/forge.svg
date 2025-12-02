@@ -45,7 +45,6 @@
       <stop offset="1" stop-color="#ff9f7c" stop-opacity="0.08"/>
     </linearGradient>
   </defs>
-  <rect width="320" height="320" fill="#050914"/>
   <g filter="url(#softGlowF)">
     <polygon points="160,12 276,82 276,238 160,308 44,238 44,82" fill="url(#bgGradientF)" stroke="url(#edgeGradientF)" stroke-width="4"/>
     <polygon points="160,38 254,94 254,226 160,282 66,226 66,94" fill="url(#glowF)" stroke="#6effe8" stroke-opacity="0.25" stroke-width="2"/>
