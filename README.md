@@ -1,10 +1,6 @@
-<div align="center">
-
 # Forge
 
-<img src="assets/forge.svg" alt="Forge Logo" width="392"/>
-
-</div>
+<p align="center"><img src="assets/forge.svg" alt="Forge Logo" width="392" /></p>
 
 [![Hex.pm](https://img.shields.io/hexpm/v/forge_ex.svg)](https://hex.pm/packages/forge_ex)
 [![Documentation](https://img.shields.io/badge/docs-hexpm-blue.svg)](https://hexdocs.pm/forge_ex)
