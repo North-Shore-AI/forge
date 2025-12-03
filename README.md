@@ -105,7 +105,7 @@ Add the dependency to `mix.exs`:
 ```elixir
 def deps do
   [
-    {:forge_ex, "~> 0.1.0"}
+    {:forge_ex, "~> 0.1.1"}
   ]
 end
 ```

@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2025-12-02
+
 ### Added
-- `/v1` SampleIR and DatasetIR endpoints using shared `labeling_ir` structs with tenancy/namespace/lineage metadata.
-- Compatibility handling for unknown request fields to maintain IR governance.
+- V1 Labeling IR API endpoints for `/v1/samples` and `/v1/datasets` using shared `labeling_ir` structs and new `SampleRecord`/`DatasetRecord` schemas that preserve tenancy, namespace, and lineage metadata.
+- `Forge.API.Router` plug to route/parse requests, extract tenant headers, parse datetimes, and ignore unknown request fields while enforcing IR governance.
+- `Forge.API.State` helpers and Labeling IR Ecto migrations enabling idempotent upserts and persistence for SampleIR and DatasetIR records.
+- Optional `Forge.API.Server` supervisor to run Plug.Cowboy on port 4102 by default, plus new dependencies (`plug`, `plug_cowboy`, `labeling_ir`) supporting the API surface.
+- API tests covering V1 routing, tenant isolation, and data handling.
 
 ## [0.1.0] - 2024-12-01
 
@@ -28,5 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Forge.Runner` GenServer for pipeline execution
 - Comprehensive test suite using Supertester
 
-[Unreleased]: https://github.com/North-Shore-AI/forge/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/North-Shore-AI/forge/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/North-Shore-AI/forge/releases/tag/v0.1.1
 [0.1.0]: https://github.com/North-Shore-AI/forge/releases/tag/v0.1.0
