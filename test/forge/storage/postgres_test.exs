@@ -10,7 +10,6 @@ defmodule Forge.Storage.PostgresTest do
   # Use Ecto sandbox for test isolation
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Forge.Repo)
-    Ecto.Adapters.SQL.Sandbox.mode(Forge.Repo, {:shared, self()})
     :ok
   end
 

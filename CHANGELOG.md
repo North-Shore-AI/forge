@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `/v1` SampleIR and DatasetIR endpoints using shared `labeling_ir` structs with tenancy/namespace/lineage metadata.
+- Compatibility handling for unknown request fields to maintain IR governance.
+
 ## [0.1.0] - 2024-12-01
 
 ### Added
